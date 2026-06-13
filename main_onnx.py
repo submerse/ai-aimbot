@@ -6,6 +6,7 @@ import cv2
 import time
 import win32api
 import win32con
+import serial
 import pandas as pd
 from utils.general import (cv2, non_max_suppression, xyxy2xywh)
 import torch
@@ -17,6 +18,9 @@ from config import aaMovementAmp, useMask, maskHeight, maskWidth, aaQuitKey, con
 import gameSelection
 
 def main():
+    port = input("Enter Arduino COM port (e.g. COM3 or /dev/ttyACM0): ").strip()
+    arduino = serial.Serial(port, 115200, timeout=0.01)
+
     # External Function for running the game selection menu (gameSelection.py)
     camera, cWidth, cHeight = gameSelection.gameSelection()
 
@@ -145,8 +149,9 @@ def main():
 
             # Moving the mouse
             if win32api.GetKeyState(0x6) and win32api.GetAsyncKeyState(0x2):
-                win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, int(
-                    mouseMove[0] * aaMovementAmp), int(mouseMove[1] * aaMovementAmp), 0, 0)
+                dx = int(mouseMove[0] * aaMovementAmp)
+                dy = int(mouseMove[1] * aaMovementAmp)
+                arduino.write(f"M{dx},{dy}\n".encode())
             last_mid_coord = [xMid, yMid]
 
         else:
@@ -191,6 +196,7 @@ def main():
             if (cv2.waitKey(1) & 0xFF) == ord('q'):
                 exit()
     camera.stop()
+    arduino.close()
        # if abs(xMid - cWidth) < threshold and abs(yMid - cHeight) < threshold and win32api.GetAsyncKeyState(0x10):
             # Fire (simulated mouse click)
         #    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)

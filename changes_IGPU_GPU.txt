@@ -1,0 +1,73 @@
+====================================================
+  iGPU / GPU SESSION SWITCHER — CHANGES LOG
+====================================================
+
+GOAL
+----
+Allow switching between NVIDIA RTX 4090 (gpu) and AMD iGPU
+(Granite Ridge, Ryzen 9 9950X3D) for the X session from TTY,
+without rebooting. Needed so the 4090 can be freed for VFIO
+VM passthrough while the host desktop stays alive on the iGPU.
+
+
+USAGE
+-----
+  startx gpu     — NVIDIA session (your normal setup, unchanged)
+  startx igpu    — AMD iGPU session (4090 free for VM/LLM)
+  startx         — defaults to gpu
+
+
+FILES CREATED
+-------------
+
+/usr/local/bin/startx
+  Wrapper script. Intercepts 'gpu' and 'igpu' arguments.
+  Falls through to /usr/bin/startx for anything else.
+  gpu  → runs /usr/bin/startx /usr/bin/i3 (default xorg.conf + xorg.conf.d/)
+  igpu → runs startx with ~/.xinitrc-igpu, bypasses nvidia
+          xorg.conf via: -config /dev/null -configdir /etc/X11/xorg-igpu.d
+
+/etc/X11/xorg-igpu.d/
+  Dedicated Xorg config dir for iGPU sessions. Contains:
+  - 10-igpu.conf          amdgpu driver, BusID PCI:13:0:0
+  - 00-keyboard.conf      US layout, swapyz option (same as main)
+  - 50-mouse-acceleration.conf
+  - 50-mouse-speed.conf   libinput, AccelSpeed -0.5 (same as main)
+
+~/.xinitrc-igpu
+  xinitrc for iGPU sessions. Runs xrandr --auto then exec i3.
+  NOTE: first time you start igpu session, run:
+    xrandr --query
+  to find the real output name (e.g. DisplayPort-0, HDMI-A-1).
+  Then update ~/.xinitrc-igpu if you want a specific refresh rate:
+    xrandr --output DisplayPort-0 --mode 1920x1080 --rate 144
+
+
+FILES UNCHANGED
+---------------
+/etc/X11/xorg.conf                        NVIDIA layout (untouched)
+/etc/X11/xorg.conf.d/10-nvidia-drm-outputclass.conf  (untouched)
+/etc/X11/xorg.conf.d/00-keyboard.conf     (untouched)
+~/.xinitrc                                NVIDIA xinitrc (untouched)
+
+
+SOURCE FILES (installer)
+------------------------
+~/setup-gpu-switch/
+  install.sh          — run once to install everything
+  startx              — source for /usr/local/bin/startx
+  xorg-igpu.d/        — source for /etc/X11/xorg-igpu.d/
+
+
+HOW IT WORKS
+------------
+- 'startx gpu'  uses the default Xorg config which has the NVIDIA
+  outputclass set as PrimaryGPU. Normal session, nothing changes.
+
+- 'startx igpu' passes -config /dev/null to Xorg so it ignores
+  /etc/X11/xorg.conf (which has the NVIDIA Screen/Device layout),
+  and -configdir /etc/X11/xorg-igpu.d so it only reads the AMD
+  iGPU device + input configs. NVIDIA never gets touched by Xorg,
+  leaving it free to be bound to vfio-pci by the VM start script.
+
+====================================================
